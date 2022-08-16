@@ -2,6 +2,7 @@
 package vfsflags
 
 import (
+	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/config/flags"
 	"github.com/rclone/rclone/fs/rc"
 	"github.com/rclone/rclone/vfs/vfscommon"
@@ -24,6 +25,7 @@ func AddFlags(flagSet *pflag.FlagSet) {
 	flags.DurationVarP(flagSet, &Opt.DirCacheTime, "dir-cache-time", "", Opt.DirCacheTime, "Time to cache directory entries for", "VFS")
 	flags.DurationVarP(flagSet, &Opt.PollInterval, "poll-interval", "", Opt.PollInterval, "Time to wait between polling for changes, must be smaller than dir-cache-time and only on supported remotes (set 0 to disable)", "VFS")
 	flags.BoolVarP(flagSet, &Opt.ReadOnly, "read-only", "", Opt.ReadOnly, "Only allow read-only access", "VFS")
+	flags.BoolVarP(flagSet, &Opt.Links, "links", "l", Opt.Links, "Translate symlinks to/from regular files with a '"+fs.LinkSuffix+"' extension", "VFS")
 	flags.FVarP(flagSet, &Opt.CacheMode, "vfs-cache-mode", "", "Cache mode off|minimal|writes|full", "VFS")
 	flags.DurationVarP(flagSet, &Opt.CachePollInterval, "vfs-cache-poll-interval", "", Opt.CachePollInterval, "Interval to poll the cache for stale objects", "VFS")
 	flags.DurationVarP(flagSet, &Opt.CacheMaxAge, "vfs-cache-max-age", "", Opt.CacheMaxAge, "Max time since last access of objects in the cache", "VFS")
