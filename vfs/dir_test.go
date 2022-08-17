@@ -345,7 +345,7 @@ func TestDirCreate(t *testing.T) {
 
 	origModTime := dir.ModTime()
 	time.Sleep(100 * time.Millisecond) // for low rez Windows timers
-	file, err := dir.Create("potato", os.O_WRONLY|os.O_CREATE)
+	file, err := dir.Create("potato", os.O_WRONLY|os.O_CREATE, vfs.Opt.FilePerms)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), file.Size())
 	assert.True(t, dir.ModTime().After(origModTime))
@@ -371,14 +371,14 @@ func TestDirCreate(t *testing.T) {
 	assert.Equal(t, int64(5), file2.Size())
 
 	// Try creating the file again - make sure we get the same file node
-	file3, err := dir.Create("potato", os.O_RDWR|os.O_CREATE)
+	file3, err := dir.Create("potato", os.O_RDWR|os.O_CREATE, vfs.Opt.FilePerms)
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), file3.Size())
 	assert.Equal(t, fmt.Sprintf("%p", file), fmt.Sprintf("%p", file3), "didn't return same node")
 
 	// Test read only fs creating new
 	vfs.Opt.ReadOnly = true
-	_, err = dir.Create("sausage", os.O_WRONLY|os.O_CREATE)
+	_, err = dir.Create("sausage", os.O_WRONLY|os.O_CREATE, vfs.Opt.FilePerms)
 	assert.Equal(t, EROFS, err)
 }
 
