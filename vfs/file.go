@@ -58,10 +58,12 @@ type File struct {
 // newFile creates a new File
 //
 // o may be nil
-func newFile(d *Dir, dPath string, o fs.Object, leaf string) *File {
-	mode := d.vfs.Opt.FilePerms
-	if d.vfs.IsSymlink(leaf) {
-		mode = os.ModePerm | os.ModeSymlink
+func newFile(d *Dir, dPath string, o fs.Object, leaf string, mode os.FileMode) *File {
+	link := d.vfs.IsSymlink(leaf)
+	modeLink := mode&os.ModeSymlink != 0
+	if (link && !modeLink) || (!link && modeLink) {
+		fs.Errorf(dPath, "Inconsistent leaf/mode: %v / %v", leaf, mode)
+		return nil
 	}
 	f := &File{
 		d:     d,
