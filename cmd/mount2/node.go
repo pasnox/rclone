@@ -218,6 +218,7 @@ func (n *Node) Opendir(ctx context.Context) syscall.Errno {
 var _ = (fusefs.NodeOpendirer)((*Node)(nil))
 
 type dirStream struct {
+	fsys  *FS
 	nodes []os.FileInfo
 	i     int
 }
@@ -234,13 +235,14 @@ func (ds *dirStream) HasNext() bool {
 func (ds *dirStream) Next() (de fuse.DirEntry, errno syscall.Errno) {
 	// defer log.Trace(nil, "")("de=%+v, errno=%v", &de, &errno)
 	fi := ds.nodes[ds.i]
+	name, _ := ds.fsys.VFS.TrimSymlink(path.Base(fi.Name()))
 	de = fuse.DirEntry{
 		// Mode is the file's mode. Only the high bits (e.g. S_IFDIR)
 		// are considered.
 		Mode: getMode(fi),
 
 		// Name is the basename of the file in the directory.
-		Name: path.Base(fi.Name()),
+		Name: name,
 
 		// Ino is the inode number.
 		Ino: 0, // FIXME
@@ -288,6 +290,7 @@ func (n *Node) Readdir(ctx context.Context) (ds fusefs.DirStream, errno syscall.
 	}
 	return &dirStream{
 		nodes: items,
+		fsys:  n.fsys,
 	}, 0
 }
 
