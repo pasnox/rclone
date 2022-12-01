@@ -62,6 +62,7 @@ func RunTests(t *testing.T, useVFS bool, mountFn mountlib.MountFn) {
 		vfsOpt := vfsflags.Opt
 		vfsOpt.CacheMode = test.cacheMode
 		vfsOpt.WriteBack = test.writeBack
+		vfsOpt.Links = true
 		run = newRun(useVFS, &vfsOpt, mountFn)
 		what := fmt.Sprintf("CacheMode=%v", test.cacheMode)
 		if test.writeBack > 0 {
@@ -95,6 +96,7 @@ func RunTests(t *testing.T, useVFS bool, mountFn mountlib.MountFn) {
 			t.Run("TestWriteFileFsync", TestWriteFileFsync)
 			t.Run("TestWriteFileDup", TestWriteFileDup)
 			t.Run("TestWriteFileAppend", TestWriteFileAppend)
+			t.Run("TestSymlinks", TestSymlinks)
 		})
 		log.Printf("Finished test run with %s (ok=%v)", what, ok)
 		run.Finalise()
@@ -198,6 +200,27 @@ func (r *Run) path(filePath string) string {
 
 type dirMap map[string]struct{}
 
+// trimDirMapLinks strips link suffix in file entries according to trim parameter
+func trimDirMapLinks(in dirMap, trim bool) dirMap {
+	if !trim {
+		return in
+	}
+
+	out := make(dirMap)
+
+	for name := range in {
+		if strings.HasSuffix(name, "/") {
+			out[name] = struct{}{}
+		} else {
+			index := strings.LastIndex(name, " ")
+			name := fmt.Sprintf("%s %s", strings.TrimSuffix(name[:index], fs.LinkSuffix), name[index+1:])
+			out[name] = struct{}{}
+		}
+	}
+
+	return out;
+}
+
 // Create a dirMap from a string
 func newDirMap(dirString string) (dm dirMap) {
 	dm = make(dirMap)
@@ -233,7 +256,12 @@ func (r *Run) readLocal(t *testing.T, dir dirMap, filePath string) {
 			assert.Equal(t, r.vfsOpt.DirPerms&os.ModePerm, fi.Mode().Perm())
 		} else {
 			dir[fmt.Sprintf("%s %d", name, fi.Size())] = struct{}{}
-			assert.Equal(t, r.vfsOpt.FilePerms&os.ModePerm, fi.Mode().Perm())
+
+			if fi.Mode()&os.ModeSymlink!=0 {
+				assert.Equal(t, os.ModePerm, fi.Mode().Perm())
+			} else {
+				assert.Equal(t, r.vfsOpt.FilePerms&os.ModePerm, fi.Mode().Perm())
+			}
 		}
 	}
 }
@@ -258,6 +286,7 @@ func (r *Run) readRemote(t *testing.T, dir dirMap, filepath string) {
 // checkDir checks the local and remote against the string passed in
 func (r *Run) checkDir(t *testing.T, dirString string) {
 	var retries = *fstest.ListRetries
+	trim := r.vfsOpt.Links
 	sleep := time.Second / 5
 	var remoteOK, fuseOK bool
 	var dm, localDm, remoteDm dirMap
@@ -268,8 +297,8 @@ func (r *Run) checkDir(t *testing.T, dirString string) {
 		remoteDm = make(dirMap)
 		r.readRemote(t, remoteDm, "")
 		// Ignore directories for remote compare
-		remoteOK = reflect.DeepEqual(dm.filesOnly(), remoteDm.filesOnly())
-		fuseOK = reflect.DeepEqual(dm, localDm)
+		remoteOK = reflect.DeepEqual(trimDirMapLinks(dm.filesOnly(), trim), trimDirMapLinks(remoteDm.filesOnly(), trim))
+		fuseOK = reflect.DeepEqual(trimDirMapLinks(dm, trim), trimDirMapLinks(localDm, trim))
 		if remoteOK && fuseOK {
 			return
 		}
@@ -277,8 +306,8 @@ func (r *Run) checkDir(t *testing.T, dirString string) {
 		t.Logf("Sleeping for %v for list eventual consistency: %d/%d", sleep, i, retries)
 		time.Sleep(sleep)
 	}
-	assert.Equal(t, dm.filesOnly(), remoteDm.filesOnly(), "expected vs remote")
-	assert.Equal(t, dm, localDm, "expected vs fuse mount")
+	assert.Equal(t, trimDirMapLinks(dm.filesOnly(), trim), trimDirMapLinks(remoteDm.filesOnly(), trim), "expected vs remote")
+	assert.Equal(t, trimDirMapLinks(dm, trim), trimDirMapLinks(localDm, trim), "expected vs fuse mount")
 }
 
 // writeFile writes data to a file named by filename.
@@ -348,6 +377,26 @@ func (r *Run) rmdir(t *testing.T, filepath string) {
 	filepath = r.path(filepath)
 	err := r.os.Remove(filepath)
 	require.NoError(t, err)
+}
+
+func (r *Run) symlink(t *testing.T, oldname, newname string) {
+	oldname = r.path(oldname)
+	newname = r.path(newname)
+	err := r.os.Symlink(oldname, newname)
+	require.NoError(t, err)
+}
+
+func (r *Run) relativeSymlink(t *testing.T, oldname, newname string) {
+	newname = r.path(newname)
+	err := r.os.Symlink(oldname, newname)
+	require.NoError(t, err)
+}
+
+func (r *Run) readlink(t *testing.T, name string) string {
+	name = r.path(name)
+	result, err := r.os.Readlink(name)
+	require.NoError(t, err)
+	return result
 }
 
 // TestMount checks that the Fs is mounted by seeing if the mountpoint
