@@ -1058,11 +1058,22 @@ func (d *Dir) Rename(oldName, newName string, destDir *Dir) error {
 			// not found, carry on
 		case nil:
 			// Special case for windows / winfsp symlinks, it create a file early that is never deleted, leading to clash.
+			// if d.vfs.Opt.Links && isLink && strings.HasPrefix(oldName, ".fuse_hidden") {
+			// 	statFile.(*File).winfspPendingSymlink = true
+			// 	break
+			// }
 			if d.vfs.Opt.Links && isLink && strings.HasPrefix(oldName, ".fuse_hidden") {
-				statFile.(*File).winfspPendingSymlink = true
-				break
+				// if exists, but no content and createTime <= 2 seconds then remove, ensure created by client
+				duration := time.Now().Sub(statFile.ModTime()).Seconds()
+				if statFile.Size() <= 0 && duration <= float64(2) {
+					errc := destDir.RemoveName(rnewName)
+					if errc != nil {
+						return errc
+					}
+					break
+				}
 			}
-
+			// clash
 			return EEXIST
 		default:
 			// a different error - report
